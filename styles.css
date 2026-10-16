@@ -941,6 +941,48 @@ body {
   border: 1px solid #bae6fd;
 }
 
+.cycle-badge.advance {
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fed7aa;
+}
+
+.advance-tag {
+  display: inline-block;
+  background: #ea580c;
+  color: #ffffff;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.history-table tbody tr.row-advance {
+  background: #fffbf5;
+}
+
+.history-table tbody tr.row-advance:hover {
+  background: #fff7ed;
+}
+
+.strip-item.advance-highlight .strip-val {
+  color: #c2410c;
+}
+
+.stat-advance-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fed7aa;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-top: 3px;
+}
+
 .type-tag {
   display: inline-block;
   padding: 2px 8px;

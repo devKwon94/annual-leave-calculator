@@ -16,6 +16,7 @@ const state = {
   firstYearMode: "accrued", // 'accrued' (매월 1개씩 발생) | 'max11' (1년차 총 11개 한도로 표시)
   fiscalIncludeFirstYearMonthly: true,
   manualAdjust: 0,
+  autoDeductAdvance: true, // 이전 연차 초과 先사용분(당겨쓰기) 차기 연차에서 자동 차감
   autoDownloadExcel: false,
   historyFilter: "all", // 'all' | 'current' | 'past'
   lastExcelFileName: "",
@@ -28,6 +29,7 @@ const els = {
   referenceDateInput: document.getElementById("referenceDateInput"),
   resetTodayBtn: document.getElementById("resetTodayBtn"),
   autoDownloadExcelChk: document.getElementById("autoDownloadExcelChk"),
+  autoDeductAdvanceChk: document.getElementById("autoDeductAdvanceChk"),
   excelFileInput: document.getElementById("excelFileInput"),
   importExcelBtn: document.getElementById("importExcelBtn"),
   exportExcelBtn: document.getElementById("exportExcelBtn"),
@@ -90,6 +92,7 @@ const els = {
   stripCurrentLabel: document.getElementById("stripCurrentLabel"),
   stripCurrentUsed: document.getElementById("stripCurrentUsed"),
   stripPastUsed: document.getElementById("stripPastUsed"),
+  stripAdvanceUsed: document.getElementById("stripAdvanceUsed"),
   stripTotalUsed: document.getElementById("stripTotalUsed"),
 
   leaveHistoryTbody: document.getElementById("leaveHistoryTbody"),
@@ -374,49 +377,81 @@ function calculateCurrentCycleAndLeave(hireDate, refDate, options) {
 }
 
 /**
- * 개별 연차 사용 기록이 몇 년차(현재 연차 vs 이전 연차)에 속하는지 판별합니다.
+ * 특정 차수(1년차, 2년차, ...)의 유효 기간과 법정 발생 한도(cap)를 계산합니다.
  */
-function classifyRecordCycle(recordDateStr, hireDate, cycleStart, cycleEnd, calcBasis, currentYearOrdinal) {
-  const recDate = parseDate(recordDateStr);
-  if (!recDate || !hireDate || !cycleStart || !cycleEnd) {
-    return { status: "unknown", label: "미분류" };
-  }
+function getCycleBoundsAndCap(ordinal, hireDate, calcBasis, options = {}) {
+  if (!hireDate || ordinal < 1) return null;
+  const hireY = hireDate.getFullYear();
+  const hireM = hireDate.getMonth();
+  const hireD = hireDate.getDate();
 
-  // 해당 사용일자가 입사일 기준 몇 년차였는지 계산
+  if (calcBasis === "anniversary") {
+    const cycleStart = getSafeAnniversary(hireY + ordinal - 1, hireM, hireD);
+    const nextAnniv = getSafeAnniversary(hireY + ordinal, hireM, hireD);
+    const cycleEnd = addDays(nextAnniv, -1);
+
+    let cap = 0;
+    if (ordinal === 1) {
+      cap = 11; // 1년차 법정 최대 한도
+    } else {
+      cap = getStatutoryLeaveForFullYears(ordinal - 1);
+    }
+
+    return { ordinal, cycleStart, cycleEnd, cap };
+  } else {
+    // 회계년도 기준
+    const cycleYear = hireY + ordinal - 1;
+    let cycleStart, cycleEnd, cap;
+
+    if (ordinal === 1) {
+      cycleStart = new Date(hireDate.getTime());
+      cycleEnd = new Date(cycleYear, 11, 31, 0, 0, 0, 0);
+      cap = Math.max(0, 11 - hireM);
+    } else if (ordinal === 2) {
+      cycleStart = new Date(cycleYear, 0, 1, 0, 0, 0, 0);
+      cycleEnd = new Date(cycleYear, 11, 31, 0, 0, 0, 0);
+      if (hireM === 0 && hireD === 1) {
+        cap = 15;
+      } else {
+        const startOfHireYear = new Date(hireY, 0, 1);
+        const endOfHireYear = new Date(hireY, 11, 31);
+        const totalDaysInHireYear = diffDaysBetween(startOfHireYear, endOfHireYear) + 1;
+        const workedDaysInHireYear = diffDaysBetween(hireDate, endOfHireYear) + 1;
+        const proportionalLeave = Math.round(15 * (workedDaysInHireYear / totalDaysInHireYear) * 10) / 10;
+        const firstYearMonths = Math.max(0, 11 - hireM);
+        const secondYearMonthly = Math.max(0, 11 - firstYearMonths);
+        cap = Math.round((proportionalLeave + secondYearMonthly) * 100) / 100;
+      }
+    } else {
+      cycleStart = new Date(cycleYear, 0, 1, 0, 0, 0, 0);
+      cycleEnd = new Date(cycleYear, 11, 31, 0, 0, 0, 0);
+      const isJanFirstHire = hireM === 0 && hireD === 1;
+      const fullYears = isJanFirstHire ? ordinal - 1 : ordinal - 2;
+      cap = getStatutoryLeaveForFullYears(fullYears);
+    }
+
+    return { ordinal, cycleStart, cycleEnd, cap };
+  }
+}
+
+/**
+ * 특정 사용일자가 입사일 기준 몇 년차에 속하는지 계산합니다.
+ */
+function getRecordCycleOrdinal(recDate, hireDate, calcBasis) {
+  if (!recDate || !hireDate) return 1;
   const hireY = hireDate.getFullYear();
   const hireM = hireDate.getMonth();
   const hireD = hireDate.getDate();
   const recY = recDate.getFullYear();
-  const annivInRecYear = getSafeAnniversary(recY, hireM, hireD);
-  const cycleStartYear = recDate < annivInRecYear ? recY - 1 : recY;
-  const recYearOrd = cycleStartYear - hireY + 1;
 
-  if (recDate >= cycleStart && recDate <= cycleEnd) {
-    return {
-      status: "current",
-      label: `${currentYearOrdinal}년차 (현재)`
-    };
-  }
-
-  if (recDate > cycleEnd) {
-    const nextOrd = recYearOrd >= 1 ? `${recYearOrd}년차` : "다음 연차";
-    return {
-      status: "future",
-      label: `${nextOrd} (예정)`
-    };
-  }
-
-  // 이전 연차 기록
-  if (calcBasis === "fiscal") {
-    return {
-      status: "past",
-      label: recYearOrd >= 1 ? `이전 (${recYearOrd}년차·${recY}년)` : `이전 (${recY}년)`
-    };
+  if (calcBasis === "anniversary") {
+    const annivInRecYear = getSafeAnniversary(recY, hireM, hireD);
+    const cycleStartYear = recDate < annivInRecYear ? recY - 1 : recY;
+    const ord = cycleStartYear - hireY + 1;
+    return Math.max(1, ord);
   } else {
-    return {
-      status: "past",
-      label: recYearOrd >= 1 ? `이전 (${recYearOrd}년차)` : "입사 전"
-    };
+    const ord = recY - hireY + 1;
+    return Math.max(1, ord);
   }
 }
 
@@ -433,6 +468,7 @@ function saveToLocalStorage() {
       firstYearMode: state.firstYearMode,
       fiscalIncludeFirstYearMonthly: state.fiscalIncludeFirstYearMonthly,
       manualAdjust: state.manualAdjust,
+      autoDeductAdvance: state.autoDeductAdvance,
       autoDownloadExcel: state.autoDownloadExcel,
       lastExcelFileName: state.lastExcelFileName,
       lastExcelActionTime: state.lastExcelActionTime,
@@ -463,6 +499,8 @@ function loadFromLocalStorage() {
       state.fiscalIncludeFirstYearMonthly =
         data.fiscalIncludeFirstYearMonthly !== undefined ? Boolean(data.fiscalIncludeFirstYearMonthly) : true;
       state.manualAdjust = parseFloat(data.manualAdjust) || 0;
+      state.autoDeductAdvance =
+        data.autoDeductAdvance !== undefined ? Boolean(data.autoDeductAdvance) : true;
       state.autoDownloadExcel = Boolean(data.autoDownloadExcel);
       state.lastExcelFileName = data.lastExcelFileName || "";
       state.lastExcelActionTime = data.lastExcelActionTime || "";
@@ -493,6 +531,9 @@ function syncControlsFromState() {
   els.firstYearModeSelect.value = state.firstYearMode;
   els.fiscalIncludeFirstYearMonthlyChk.checked = state.fiscalIncludeFirstYearMonthly;
   els.manualAdjustInput.value = state.manualAdjust;
+  if (els.autoDeductAdvanceChk) {
+    els.autoDeductAdvanceChk.checked = state.autoDeductAdvance;
+  }
   els.autoDownloadExcelChk.checked = state.autoDownloadExcel;
 
   els.basisRadios.forEach((radio) => {
@@ -550,8 +591,9 @@ function renderAll() {
 
     els.currentTabLabel.textContent = "1년차 (현재)";
     els.stripCurrentLabel.textContent = "현재 연차 사용 합계";
+    if (els.stripAdvanceUsed) els.stripAdvanceUsed.textContent = "0일 (0건)";
     els.historySubtitleText.innerHTML =
-      "전체 기록은 연차가 리셋되어도 계속 이어지며, <strong>현재 연차</strong> 내역만 잔여 연차 계산에 반영됩니다.";
+      "전체 기록은 연차가 리셋되어도 계속 이어지며, <strong>현재 연차</strong> 내역 및 <strong>이전 연차 先사용(당겨씀) 차감</strong>이 잔여 연차 계산에 반영됩니다.";
 
     renderHistoryTable(null);
     renderLawReferenceTable(null);
@@ -590,7 +632,7 @@ function renderAll() {
   els.tenureDayCount.textContent = `${tenure.totalDaysInclusive.toLocaleString("ko-KR")}일`;
   els.tenureExactDays.textContent = `입사일 포함 ${tenure.totalDaysInclusive.toLocaleString("ko-KR")}일째 (만 ${tenure.elapsedDays.toLocaleString("ko-KR")}일)`;
 
-  // 3) 연차 사용 기록 분류 및 합산
+  // 3) 연차 사용 기록 분류 및 차수별 先사용(당겨쓰기) 분석
   let currentUsedDays = 0;
   let currentUsedCount = 0;
   let pastUsedDays = 0;
@@ -599,31 +641,93 @@ function renderAll() {
 
   const sortedRecords = [...state.records].sort((a, b) => a.date.localeCompare(b.date));
 
+  // 차수별 누적 사용일수 맵
+  const cycleAccumMap = {};
+
   const enrichedRecords = sortedRecords.map((rec) => {
     const daysNum = parseFloat(rec.days) || 0;
-    const cycleInfo = classifyRecordCycle(
-      rec.date,
-      hireDateObj,
-      cycleStart,
-      cycleEnd,
-      state.calcBasis,
-      tenure.tenureYearOrdinal
-    );
-
+    const recDate = parseDate(rec.date);
     totalUsedDays += daysNum;
-    if (cycleInfo.status === "current") {
+
+    if (!recDate) {
+      return {
+        ...rec,
+        daysNum,
+        cycleStatus: "unknown",
+        cycleBadgeLabel: "미분류",
+        isAdvance: false,
+        advancePortion: 0
+      };
+    }
+
+    const recCycleOrd = getRecordCycleOrdinal(recDate, hireDateObj, state.calcBasis);
+    const cycleDef = getCycleBoundsAndCap(recCycleOrd, hireDateObj, state.calcBasis, {
+      firstYearMode: state.firstYearMode,
+      fiscalIncludeFirstYearMonthly: state.fiscalIncludeFirstYearMonthly
+    });
+    const cap = cycleDef ? cycleDef.cap : 999;
+
+    const prevAcc = cycleAccumMap[recCycleOrd] || 0;
+    const newAcc = Math.round((prevAcc + daysNum) * 100) / 100;
+    cycleAccumMap[recCycleOrd] = newAcc;
+
+    let isAdvance = false;
+    let advancePortion = 0;
+    const targetNextOrd = recCycleOrd + 1;
+
+    if (prevAcc >= cap) {
+      // 이미 발생 한도를 초과한 상태에서의 추가 사용 -> 해당 건 전체가 先사용
+      isAdvance = true;
+      advancePortion = daysNum;
+    } else if (newAcc > cap) {
+      // 이번 사용으로 발생 한도를 돌파함 -> 초과분만큼 先사용
+      isAdvance = true;
+      advancePortion = Math.round((newAcc - cap) * 100) / 100;
+    }
+
+    // 현재 차수 vs 이전 차수 vs 미래 차수 상태 판별
+    let status = "past";
+    if (recCycleOrd === tenure.tenureYearOrdinal) {
+      status = "current";
       currentUsedDays += daysNum;
       currentUsedCount += 1;
-    } else if (cycleInfo.status === "past") {
+    } else if (recCycleOrd > tenure.tenureYearOrdinal) {
+      status = "future";
+    } else {
       pastUsedDays += daysNum;
       pastUsedCount += 1;
+    }
+
+    // 배지 라벨 구성 (한문 '先' 표기 적용)
+    let badgeLabel = "";
+    if (isAdvance) {
+      if (advancePortion >= daysNum) {
+        badgeLabel = `${recCycleOrd}년차 (${targetNextOrd}년차 先사용)`;
+      } else {
+        badgeLabel = `${recCycleOrd}년차 (${targetNextOrd}년차 先사용 ${formatNumber(advancePortion)}일)`;
+      }
+    } else {
+      if (status === "current") {
+        badgeLabel = `${tenure.tenureYearOrdinal}년차 (현재)`;
+      } else if (status === "future") {
+        badgeLabel = `${recCycleOrd}년차 (예정)`;
+      } else {
+        badgeLabel =
+          state.calcBasis === "fiscal"
+            ? `이전 (${recCycleOrd}년차·${recDate.getFullYear()}년)`
+            : `이전 (${recCycleOrd}년차)`;
+      }
     }
 
     return {
       ...rec,
       daysNum,
-      cycleStatus: cycleInfo.status,
-      cycleBadgeLabel: cycleInfo.label
+      recCycleOrd,
+      cycleStatus: status,
+      isAdvance,
+      advancePortion,
+      targetNextOrd,
+      cycleBadgeLabel: badgeLabel
     };
   });
 
@@ -631,12 +735,55 @@ function renderAll() {
   pastUsedDays = Math.round(pastUsedDays * 100) / 100;
   totalUsedDays = Math.round(totalUsedDays * 100) / 100;
 
-  const remainingDays = Math.round((totalGenerated - currentUsedDays) * 100) / 100;
+  // 전체 등록된 기록 중 발생한 총 先사용 통계 (요약 스트립용)
+  let totalAdvanceDays = 0;
+  let totalAdvanceCount = 0;
+  enrichedRecords.forEach((r) => {
+    if (r.isAdvance) {
+      totalAdvanceDays += r.advancePortion;
+      totalAdvanceCount += 1;
+    }
+  });
+  totalAdvanceDays = Math.round(totalAdvanceDays * 100) / 100;
+
+  // 이전 연차(예: 1년차)에서 발생한 초과 先사용분 총합 계산 (차기 연차 차감용)
+  let totalPastAdvanceDeficit = 0;
+  for (let ord = 1; ord < tenure.tenureYearOrdinal; ord++) {
+    const cycleDef = getCycleBoundsAndCap(ord, hireDateObj, state.calcBasis, {
+      firstYearMode: state.firstYearMode,
+      fiscalIncludeFirstYearMonthly: state.fiscalIncludeFirstYearMonthly
+    });
+    const cap = cycleDef ? cycleDef.cap : 999;
+    const usedInPastCycle = cycleAccumMap[ord] || 0;
+    if (usedInPastCycle > cap) {
+      totalPastAdvanceDeficit += Math.round((usedInPastCycle - cap) * 100) / 100;
+    }
+  }
+  totalPastAdvanceDeficit = Math.round(totalPastAdvanceDeficit * 100) / 100;
+
+  // 이전 연차 초과 先사용분 자동 차감 적용
+  const advanceDeductedDays = state.autoDeductAdvance ? totalPastAdvanceDeficit : 0;
+  const netGenerated = Math.max(
+    0,
+    Math.round((calcResult.baseLeave - advanceDeductedDays + calcResult.manualAdjust) * 100) / 100
+  );
+
+  const remainingDays = Math.round((netGenerated - currentUsedDays) * 100) / 100;
 
   // 4) 직관적인 N년차 용어로 좌측/우측 라벨 동기화
   els.generatedLeaveLabel.textContent = `${shortYearLabel} 발생 연차`;
-  els.generatedLeaveVal.textContent = formatNumber(totalGenerated);
-  els.generatedLeaveDesc.textContent = formulaDesc;
+  els.generatedLeaveVal.textContent = formatNumber(netGenerated);
+
+  let updatedFormulaDesc = calcResult.formulaDesc;
+  if (advanceDeductedDays > 0) {
+    const pastCycleName = tenure.tenureYearOrdinal > 1 ? `${tenure.tenureYearOrdinal - 1}년차` : "이전 연차";
+    updatedFormulaDesc = `법정 ${formatNumber(calcResult.baseLeave)}일 – ${pastCycleName} 先사용 ${formatNumber(advanceDeductedDays)}일 자동 차감`;
+    if (calcResult.manualAdjust !== 0) {
+      const sign = calcResult.manualAdjust > 0 ? `+${calcResult.manualAdjust}` : `${calcResult.manualAdjust}`;
+      updatedFormulaDesc += ` (수동보정 ${sign}일)`;
+    }
+  }
+  els.generatedLeaveDesc.textContent = updatedFormulaDesc;
 
   els.usedLeaveLabel.textContent = `${shortYearLabel} 사용 연차`;
   els.usedLeaveVal.textContent = formatNumber(currentUsedDays);
@@ -645,7 +792,7 @@ function renderAll() {
   els.remainingLeaveVal.textContent = formatNumber(remainingDays);
   if (remainingDays < 0) {
     els.remainingStatCard.classList.add("negative-remaining");
-    els.remainingLeaveDesc.textContent = `발생 연차 대비 ${formatNumber(Math.abs(remainingDays))}일 초과 사용`;
+    els.remainingLeaveDesc.textContent = `가용 연차 대비 ${formatNumber(Math.abs(remainingDays))}일 초과 사용`;
   } else {
     els.remainingStatCard.classList.remove("negative-remaining");
     els.remainingLeaveDesc.textContent = `${formatDateDot(cycleEnd)}까지 사용 가능`;
@@ -654,12 +801,12 @@ function renderAll() {
   // 소진율 프로그레스 바
   els.usageRateLabel.textContent = `${shortYearLabel} 연차 소진율`;
   let usageRate = 0;
-  if (totalGenerated > 0) {
-    usageRate = (currentUsedDays / totalGenerated) * 100;
+  if (netGenerated > 0) {
+    usageRate = (currentUsedDays / netGenerated) * 100;
   } else if (currentUsedDays > 0) {
     usageRate = 100;
   }
-  els.usageRateText.textContent = `${usageRate.toFixed(1)}% (${formatNumber(currentUsedDays)} / ${formatNumber(totalGenerated)}일)`;
+  els.usageRateText.textContent = `${usageRate.toFixed(1)}% (${formatNumber(currentUsedDays)} / ${formatNumber(netGenerated)}일)`;
   els.usageProgressBar.style.width = `${Math.min(100, Math.max(0, usageRate))}%`;
   if (usageRate > 100) {
     els.usageProgressBar.classList.add("over-limit");
@@ -670,7 +817,7 @@ function renderAll() {
   // 5) 우측 연차 사용 기록 탭 및 요약 스트립 업데이트
   els.currentTabLabel.textContent = `${shortYearLabel} (현재)`;
   els.stripCurrentLabel.textContent = `${shortYearLabel} 사용 합계`;
-  els.historySubtitleText.innerHTML = `전체 기록은 연차가 리셋되어도 계속 이어지며, <strong>${shortYearLabel} (현재)</strong> 내역만 잔여 연차 계산에 반영됩니다.`;
+  els.historySubtitleText.innerHTML = `전체 기록은 연차가 리셋되어도 계속 이어지며, <strong>${shortYearLabel} (현재)</strong> 내역 및 <strong>이전 연차 先사용(당겨씀) 차감</strong>이 잔여 연차 계산에 반영됩니다.`;
 
   els.countAllBadge.textContent = enrichedRecords.length;
   els.countCurrentBadge.textContent = currentUsedCount;
@@ -678,6 +825,9 @@ function renderAll() {
 
   els.stripCurrentUsed.textContent = `${formatNumber(currentUsedDays)}일 (${currentUsedCount}건)`;
   els.stripPastUsed.textContent = `${formatNumber(pastUsedDays)}일 (${pastUsedCount}건)`;
+  if (els.stripAdvanceUsed) {
+    els.stripAdvanceUsed.textContent = `${formatNumber(totalAdvanceDays)}일 (${totalAdvanceCount}건)`;
+  }
   els.stripTotalUsed.textContent = `${formatNumber(totalUsedDays)}일 (${enrichedRecords.length}건)`;
 
   renderHistoryTable(enrichedRecords);
@@ -710,13 +860,17 @@ function renderHistoryTable(enrichedRecords) {
     if (rec.cycleStatus === "past") {
       tr.classList.add("past-cycle-row");
     }
+    if (rec.isAdvance) {
+      tr.classList.add("row-advance");
+    }
 
-    const badgeClass =
-      rec.cycleStatus === "current"
-        ? "current"
-        : rec.cycleStatus === "future"
-        ? "future"
-        : "past";
+    const badgeClass = rec.isAdvance
+      ? "advance"
+      : rec.cycleStatus === "current"
+      ? "current"
+      : rec.cycleStatus === "future"
+      ? "future"
+      : "past";
 
     tr.innerHTML = `
       <td class="col-no">${idx + 1}</td>
@@ -823,22 +977,61 @@ function exportToExcel() {
 
   const sortedRecords = [...state.records].sort((a, b) => a.date.localeCompare(b.date));
 
+  const cycleAccumMap = {};
   let currentCycleUsed = 0;
+
   const historyRows = sortedRecords.map((rec, index) => {
     const daysNum = parseFloat(rec.days) || 0;
-    const cycleInfo = calcResult
-      ? classifyRecordCycle(
-          rec.date,
-          hireDateObj,
-          calcResult.cycleStart,
-          calcResult.cycleEnd,
-          state.calcBasis,
-          calcResult.tenure.tenureYearOrdinal
-        )
-      : { status: "unknown", label: "-" };
+    const recDate = parseDate(rec.date);
 
-    if (cycleInfo.status === "current") {
-      currentCycleUsed += daysNum;
+    let cycleLabel = "-";
+    let isCurrent = "N";
+    let isAdvance = false;
+    let advancePortion = 0;
+
+    if (calcResult && hireDateObj && recDate) {
+      const recCycleOrd = getRecordCycleOrdinal(recDate, hireDateObj, state.calcBasis);
+      const cycleDef = getCycleBoundsAndCap(recCycleOrd, hireDateObj, state.calcBasis, {
+        firstYearMode: state.firstYearMode,
+        fiscalIncludeFirstYearMonthly: state.fiscalIncludeFirstYearMonthly
+      });
+      const cap = cycleDef ? cycleDef.cap : 999;
+
+      const prevAcc = cycleAccumMap[recCycleOrd] || 0;
+      const newAcc = Math.round((prevAcc + daysNum) * 100) / 100;
+      cycleAccumMap[recCycleOrd] = newAcc;
+
+      const targetNextOrd = recCycleOrd + 1;
+      if (prevAcc >= cap) {
+        isAdvance = true;
+        advancePortion = daysNum;
+      } else if (newAcc > cap) {
+        isAdvance = true;
+        advancePortion = Math.round((newAcc - cap) * 100) / 100;
+      }
+
+      if (recCycleOrd === calcResult.tenure.tenureYearOrdinal) {
+        isCurrent = "Y";
+        currentCycleUsed += daysNum;
+      }
+
+      if (isAdvance) {
+        cycleLabel =
+          advancePortion >= daysNum
+            ? `${recCycleOrd}년차 (${targetNextOrd}년차 先사용)`
+            : `${recCycleOrd}년차 (${targetNextOrd}년차 先사용 ${formatNumber(advancePortion)}일)`;
+      } else {
+        if (isCurrent === "Y") {
+          cycleLabel = `${calcResult.tenure.tenureYearOrdinal}년차 (현재)`;
+        } else if (recCycleOrd > calcResult.tenure.tenureYearOrdinal) {
+          cycleLabel = `${recCycleOrd}년차 (예정)`;
+        } else {
+          cycleLabel =
+            state.calcBasis === "fiscal"
+              ? `이전 (${recCycleOrd}년차·${recDate.getFullYear()}년)`
+              : `이전 (${recCycleOrd}년차)`;
+        }
+      }
     }
 
     return {
@@ -847,8 +1040,8 @@ function exportToExcel() {
       "일수": daysNum,
       "비고": rec.note || "",
       "휴가구분": rec.type || "연차",
-      "연차구분": cycleInfo.label,
-      "현재연차포함": cycleInfo.status === "current" ? "Y" : "N"
+      "연차구분": cycleLabel,
+      "현재연차포함": isCurrent
     };
   });
 
@@ -863,12 +1056,32 @@ function exportToExcel() {
     { wch: 10 },
     { wch: 30 },
     { wch: 14 },
-    { wch: 18 },
+    { wch: 24 },
     { wch: 15 }
   ];
 
-  const totalGenerated = calcResult ? calcResult.totalGenerated : 0;
-  const remainingLeave = Math.round((totalGenerated - currentCycleUsed) * 100) / 100;
+  // 이전 연차 초과 先사용분 총합 계산
+  let totalPastAdvanceDeficit = 0;
+  if (calcResult && hireDateObj) {
+    for (let ord = 1; ord < calcResult.tenure.tenureYearOrdinal; ord++) {
+      const cycleDef = getCycleBoundsAndCap(ord, hireDateObj, state.calcBasis, {
+        firstYearMode: state.firstYearMode,
+        fiscalIncludeFirstYearMonthly: state.fiscalIncludeFirstYearMonthly
+      });
+      const cap = cycleDef ? cycleDef.cap : 999;
+      const usedInPastCycle = cycleAccumMap[ord] || 0;
+      if (usedInPastCycle > cap) {
+        totalPastAdvanceDeficit += Math.round((usedInPastCycle - cap) * 100) / 100;
+      }
+    }
+  }
+  totalPastAdvanceDeficit = Math.round(totalPastAdvanceDeficit * 100) / 100;
+
+  const advanceDeductedDays = state.autoDeductAdvance ? totalPastAdvanceDeficit : 0;
+  const baseLeave = calcResult ? calcResult.baseLeave : 0;
+  const manualAdjust = calcResult ? calcResult.manualAdjust : 0;
+  const netGenerated = Math.max(0, Math.round((baseLeave - advanceDeductedDays + manualAdjust) * 100) / 100);
+  const remainingLeave = Math.round((netGenerated - currentCycleUsed) * 100) / 100;
 
   const summaryAoA = [
     ["항목", "값", "설명"],
@@ -878,6 +1091,8 @@ function exportToExcel() {
     ["산정기준코드", state.calcBasis, "시스템 복원용 코드 (anniversary / fiscal)"],
     ["1년차표시방식", state.firstYearMode, "accrued(매월 1개씩 발생) / max11(11개 한도 표시)"],
     ["회계2년차월차합산", state.fiscalIncludeFirstYearMonthly ? "Y" : "N", "회계년도 2년차에 1년 미만 월차 합산 여부"],
+    ["이전연차_先사용자동차감", state.autoDeductAdvance ? "Y" : "N", "이전 연차 초과 先사용분 차기 연차에서 자동 차감 여부"],
+    ["이전연차_先사용차감일수", advanceDeductedDays, "차기 연차에서 차감된 일수"],
     ["수동보정일수", state.manualAdjust || 0, "발생 연차 수동 가감 일수"],
     ["기준일자(오늘)", formatDate(refDateObj), "근속 및 연차 산정 기준일"],
     ["근속연차", calcResult ? `${calcResult.tenure.tenureYearOrdinal}년차` : "-", calcResult ? `만 ${calcResult.tenure.exactYears}년 ${calcResult.tenure.remMonths}개월` : "-"],
@@ -888,9 +1103,10 @@ function exportToExcel() {
       calcResult ? `${formatDate(calcResult.cycleStart)} ~ ${formatDate(calcResult.cycleEnd)}` : "-",
       calcResult ? calcResult.cycleLabel : "-"
     ],
-    ["현재연차_발생일수", totalGenerated, calcResult ? calcResult.formulaDesc : "-"],
+    ["법정발생_기본일수", baseLeave, calcResult ? calcResult.formulaDesc : "-"],
+    ["현재연차_실질발생일수", netGenerated, "법정 발생일수 - 이전연차 先사용 차감일수 + 수동보정"],
     ["현재연차_사용일수", Math.round(currentCycleUsed * 100) / 100, "현재 연차 범위 내 사용일수 합계"],
-    ["현재연차_잔여일수", remainingLeave, "현재연차 발생일수 - 현재연차 사용일수"]
+    ["현재연차_잔여일수", remainingLeave, "실질발생일수 - 현재연차 사용일수"]
   ];
 
   const wsSummary = XLSX.utils.aoa_to_sheet(summaryAoA);
@@ -961,6 +1177,9 @@ function importFromExcel(file) {
         }
         if (kv["회계2년차월차합산"]) {
           state.fiscalIncludeFirstYearMonthly = String(kv["회계2년차월차합산"]).trim() !== "N";
+        }
+        if (kv["이전연차_先사용자동차감"]) {
+          state.autoDeductAdvance = String(kv["이전연차_先사용자동차감"]).trim() !== "N";
         }
         if (kv["수동보정일수"] !== undefined) {
           state.manualAdjust = parseFloat(kv["수동보정일수"]) || 0;
@@ -1072,6 +1291,19 @@ function initEvents() {
     state.autoDownloadExcel = e.target.checked;
     saveToLocalStorage();
   });
+
+  if (els.autoDeductAdvanceChk) {
+    els.autoDeductAdvanceChk.addEventListener("change", (e) => {
+      state.autoDeductAdvance = e.target.checked;
+      saveToLocalStorage();
+      renderAll();
+      showToast(
+        state.autoDeductAdvance
+          ? "이전 연차 초과 先사용분 자동 차감이 활성화되었습니다."
+          : "이전 연차 초과 先사용분 자동 차감이 비활성화되었습니다."
+      );
+    });
+  }
 
   els.leaveTypeSelect.addEventListener("change", (e) => {
     const [, defaultDays] = e.target.value.split("|");

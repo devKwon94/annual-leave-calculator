@@ -134,6 +134,13 @@
           </div>
 
           <div class="adv-row">
+            <label class="adv-label" title="이전 연차에서 발생 한도를 초과하여 先사용한 일수(당겨쓰기)를 차기 연차 발생 연차에서 자동으로 차감합니다.">
+              <input type="checkbox" id="autoDeductAdvanceChk" checked />
+              <span>이전 연차 초과 先사용분(당겨쓰기) 차기 연차에서 자동 차감</span>
+            </label>
+          </div>
+
+          <div class="adv-row">
             <label class="adv-label" for="manualAdjustInput">
               현재 연차 수동 보정 <span class="label-opt">(이월·포상·내규 등 가감)</span>
             </label>
@@ -279,7 +286,7 @@
           <div>
             <h2 class="card-title">📋 연차 사용 기록 (사용일자 · 일수 · 비고)</h2>
             <p class="history-subtitle" id="historySubtitleText">
-              전체 기록은 연차가 리셋되어도 계속 이어지며, <strong>현재 연차(1년차)</strong> 내역만 잔여 연차 계산에 반영됩니다.
+              전체 기록은 연차가 리셋되어도 계속 이어지며, <strong>현재 연차</strong> 내역 및 <strong>이전 연차 先사용(당겨씀) 차감</strong>이 잔여 연차 계산에 반영됩니다.
             </p>
           </div>
 
@@ -306,6 +313,11 @@
           <div class="strip-item">
             <span class="strip-label">이전 연차 전체 사용</span>
             <strong class="strip-val" id="stripPastUsed">0일 (0건)</strong>
+          </div>
+          <div class="strip-divider"></div>
+          <div class="strip-item advance-highlight" id="stripAdvanceItem" title="발생 한도를 초과하여 차기 연차를 미리 당겨서 사용한 총 일수입니다.">
+            <span class="strip-label">先사용(당겨씀) 합계</span>
+            <strong class="strip-val" id="stripAdvanceUsed">0일 (0건)</strong>
           </div>
           <div class="strip-divider"></div>
           <div class="strip-item">

@@ -22,26 +22,35 @@
         </div>
       </div>
 
-      <div class="header-actions">
-        <div class="today-box" title="연차 및 근속일수 계산의 기준이 되는 날짜입니다.">
-          <span class="today-label">기준일(오늘)</span>
-          <input type="date" id="referenceDateInput" class="date-input-compact" />
-          <button type="button" id="resetTodayBtn" class="btn-ghost-sm">오늘로</button>
+      <div class="header-right-stack">
+        <div class="header-actions">
+          <div class="today-box" title="연차 및 근속일수 계산의 기준이 되는 날짜입니다.">
+            <span class="today-label">기준일(오늘)</span>
+            <input type="date" id="referenceDateInput" class="date-input-compact" />
+            <button type="button" id="resetTodayBtn" class="btn-ghost-sm">오늘로</button>
+          </div>
+
+          <div class="excel-db-group">
+            <label class="auto-excel-toggle" title="체크하면 연차 기록을 추가·삭제할 때마다 자동으로 로컬 PC에 엑셀 파일이 저장됩니다.">
+              <input type="checkbox" id="autoDownloadExcelChk" />
+              <span>변경 시 엑셀 자동저장</span>
+            </label>
+
+            <input type="file" id="excelFileInput" accept=".xlsx,.xls" hidden />
+            <button type="button" id="importExcelBtn" class="btn btn-outline">
+              📂 엑셀 DB 불러오기
+            </button>
+            <button type="button" id="exportExcelBtn" class="btn btn-primary">
+              💾 엑셀 DB 저장하기
+            </button>
+          </div>
         </div>
 
-        <div class="excel-db-group">
-          <label class="auto-excel-toggle" title="체크하면 연차 기록을 추가·삭제할 때마다 자동으로 로컬 PC에 엑셀 파일이 저장됩니다.">
-            <input type="checkbox" id="autoDownloadExcelChk" />
-            <span>변경 시 엑셀 자동저장</span>
-          </label>
-
-          <input type="file" id="excelFileInput" accept=".xlsx,.xls" hidden />
-          <button type="button" id="importExcelBtn" class="btn btn-outline">
-            📂 엑셀 DB 불러오기
-          </button>
-          <button type="button" id="exportExcelBtn" class="btn btn-primary">
-            💾 엑셀 DB 저장하기
-          </button>
+        <!-- 우측 상단 엑셀 DB 저장하기 바로 아래: 로컬 PC 저장 경로 안내 표시줄 -->
+        <div class="excel-path-bar" id="excelPathBar">
+          <span class="path-label">📍 저장되어 있는 경로:</span>
+          <code class="path-value" id="savedPathText">C:\Users\[본인PC계정]\Downloads\연차 사용 이력_(저장 시 자동생성).xlsx</code>
+          <span class="path-sub" id="savedPathStatus">(브라우저 자동저장 활성화됨)</span>
         </div>
       </div>
     </div>
@@ -52,7 +61,7 @@
     <div class="info-banner-inner">
       <span class="info-badge">안내</span>
       <span class="info-text">
-        입력하신 입사일과 연차 기록은 <strong>현재 브라우저에 자동 저장</strong>되며, 우측 상단 <strong>[엑셀 DB 저장하기]</strong>를 누르면 본인 PC에 <code>연차 사용 이력_(업데이트 날짜, 시간).xlsx</code> 파일로 보관됩니다. 다른 분께 링크를 공유해도 각자의 데이터는 섞이지 않습니다.
+        별도 프로그램이나 가입 없이 <strong>인터넷 주소(링크)만으로 바로 사용</strong>할 수 있습니다. 입력하신 내용은 <strong>각자의 PC 브라우저 및 본인 PC 엑셀 파일</strong>에만 독립 저장되므로 다른 분들과 데이터가 섞이지 않습니다.
       </span>
       <span id="lastSavedIndicator" class="last-saved-text">자동 저장 완료</span>
     </div>
@@ -110,10 +119,10 @@
         <!-- 세부 산정 옵션 및 수동 보정 -->
         <div class="advanced-options-box">
           <div class="adv-row" id="firstYearOptionRow">
-            <label class="adv-label" for="firstYearModeSelect">1년 미만(월차) 표시 방식</label>
+            <label class="adv-label" for="firstYearModeSelect">1년차(입사 1년 미만) 연차 표시 방식</label>
             <select id="firstYearModeSelect" class="form-select-sm">
-              <option value="accrued">오늘까지 만 경과한 개월 수만큼 발생 (법정 실시간)</option>
-              <option value="max11">1년차 총 최대 발생분(11개) 선반영 표시</option>
+              <option value="accrued">매월 1개씩 발생 (오늘까지 생긴 개수만 표시)</option>
+              <option value="max11">1년차 총 11개 한도로 미리 표시 (11개에서 차감)</option>
             </select>
           </div>
 
@@ -126,7 +135,7 @@
 
           <div class="adv-row">
             <label class="adv-label" for="manualAdjustInput">
-              이번 주기 발생 연차 수동 보정 <span class="label-opt">(이월·포상·내규 등 가감)</span>
+              현재 연차 수동 보정 <span class="label-opt">(이월·포상·내규 등 가감)</span>
             </label>
             <div class="adjust-input-wrap">
               <input type="number" id="manualAdjustInput" class="form-control-sm" step="0.25" value="0" />
@@ -136,12 +145,12 @@
         </div>
       </div>
 
-      <!-- 2. 오늘 기준 근속 기간 & 이번 주기 연차 현황 대시보드 -->
+      <!-- 2. 오늘 기준 근속 기간 & 현재 연차 현황 대시보드 -->
       <div class="card status-dashboard-card">
         <div class="card-header">
           <div>
-            <h2 class="card-title">📊 근속 현황 및 이번 주기 연차 요약</h2>
-            <p class="cycle-period-text" id="currentCyclePeriodText">이번 산정 주기: -</p>
+            <h2 class="card-title">📊 근속 현황 및 내 연차 요약</h2>
+            <p class="cycle-period-text" id="currentCyclePeriodText">현재 적용 연차: -</p>
           </div>
           <span class="d-day-badge" id="nextResetDdayBadge">리셋까지 -일</span>
         </div>
@@ -165,11 +174,11 @@
           </div>
         </div>
 
-        <!-- 이번 주기 발생 / 사용 / 잔여 연차 3대 지표 -->
+        <!-- 현재 연차 발생 / 사용 / 잔여 3대 지표 -->
         <div class="leave-summary-grid">
           <div class="leave-stat-card stat-generated">
             <div class="stat-top">
-              <span class="stat-label">이번 주기 발생 연차</span>
+              <span class="stat-label" id="generatedLeaveLabel">1년차 발생 연차</span>
               <span class="stat-icon">🌱</span>
             </div>
             <div class="stat-number-row">
@@ -181,19 +190,19 @@
 
           <div class="leave-stat-card stat-used">
             <div class="stat-top">
-              <span class="stat-label">이번 주기 사용 연차</span>
+              <span class="stat-label" id="usedLeaveLabel">1년차 사용 연차</span>
               <span class="stat-icon">✈️</span>
             </div>
             <div class="stat-number-row">
               <strong class="stat-number" id="usedLeaveVal">0</strong>
               <span class="stat-unit">일</span>
             </div>
-            <p class="stat-formula" id="usedLeaveDesc">이번 주기 내 사용 0건</p>
+            <p class="stat-formula" id="usedLeaveDesc">현재 연차 사용 0건</p>
           </div>
 
           <div class="leave-stat-card stat-remaining">
             <div class="stat-top">
-              <span class="stat-label">현재 잔여 연차</span>
+              <span class="stat-label" id="remainingLeaveLabel">현재 잔여 연차</span>
               <span class="stat-icon">✨</span>
             </div>
             <div class="stat-number-row">
@@ -207,7 +216,7 @@
         <!-- 연차 소진율 프로그레스 바 -->
         <div class="usage-progress-wrap">
           <div class="usage-progress-labels">
-            <span>이번 주기 연차 소진율</span>
+            <span id="usageRateLabel">현재 연차 소진율</span>
             <strong id="usageRateText">0.0%</strong>
           </div>
           <div class="progress-track">
@@ -269,33 +278,33 @@
         <div class="history-header">
           <div>
             <h2 class="card-title">📋 연차 사용 기록 (사용일자 · 일수 · 비고)</h2>
-            <p class="history-subtitle">
-              전체 기록은 주기가 바뀌어도 계속 누적 보관되며, <strong>[이번 주기]</strong>에 해당하는 내역만 이번 주기 사용 연차로 합산됩니다.
+            <p class="history-subtitle" id="historySubtitleText">
+              전체 기록은 연차가 리셋되어도 계속 이어지며, <strong>현재 연차(1년차)</strong> 내역만 잔여 연차 계산에 반영됩니다.
             </p>
           </div>
 
           <div class="history-filter-tabs">
             <button type="button" class="filter-tab active" data-filter="all">
-              전체 누적 기록 <span class="tab-count" id="countAllBadge">0</span>
+              전체 연차 이력 <span class="tab-count" id="countAllBadge">0</span>
             </button>
             <button type="button" class="filter-tab" data-filter="current">
-              이번 주기만 <span class="tab-count" id="countCurrentBadge">0</span>
+              <span id="currentTabLabel">1년차 (현재)</span> <span class="tab-count" id="countCurrentBadge">0</span>
             </button>
             <button type="button" class="filter-tab" data-filter="past">
-              이전 주기 <span class="tab-count" id="countPastBadge">0</span>
+              이전 연차 전체 <span class="tab-count" id="countPastBadge">0</span>
             </button>
           </div>
         </div>
 
-        <!-- 주기별 요약 스트립 -->
+        <!-- 연차별 요약 스트립 -->
         <div class="history-summary-strip">
           <div class="strip-item highlight">
-            <span class="strip-label">이번 주기 사용 합계</span>
+            <span class="strip-label" id="stripCurrentLabel">1년차 사용 합계</span>
             <strong class="strip-val" id="stripCurrentUsed">0일 (0건)</strong>
           </div>
           <div class="strip-divider"></div>
           <div class="strip-item">
-            <span class="strip-label">이전 주기 누적 사용</span>
+            <span class="strip-label">이전 연차 전체 사용</span>
             <strong class="strip-val" id="stripPastUsed">0일 (0건)</strong>
           </div>
           <div class="strip-divider"></div>
@@ -311,9 +320,9 @@
             <thead>
               <tr>
                 <th class="col-no">No.</th>
-                <th class="col-cycle">적용 주기</th>
+                <th class="col-cycle">연차 구분</th>
                 <th class="col-date">사용일자</th>
-                <th class="col-type">구분</th>
+                <th class="col-type">휴가종류</th>
                 <th class="col-days">일수</th>
                 <th class="col-note">비고</th>
                 <th class="col-action">관리</th>

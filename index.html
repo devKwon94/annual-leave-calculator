@@ -134,9 +134,9 @@
           </div>
 
           <div class="adv-row">
-            <label class="adv-label" title="이전 연차에서 발생 한도를 초과하여 先사용한 일수(당겨쓰기)를 차기 연차 발생 연차에서 자동으로 차감합니다.">
+            <label class="adv-label" title="2년차 이후 기본 발생 일수를 초과하여 사용한 일수(끌어쓰기)를 차기 연차 발생 일수에서 자동으로 차감합니다. (1년차 초과분은 리셋되어 2년차에 영향 없음)">
               <input type="checkbox" id="autoDeductAdvanceChk" checked />
-              <span>이전 연차 초과 先사용분(당겨쓰기) 차기 연차에서 자동 차감</span>
+              <span>이전 연차 초과분(끌어쓰기) 차기 연차에서 자동 차감</span>
             </label>
           </div>
 
@@ -286,7 +286,7 @@
           <div>
             <h2 class="card-title">📋 연차 사용 기록 (사용일자 · 일수 · 비고)</h2>
             <p class="history-subtitle" id="historySubtitleText">
-              전체 기록은 연차가 리셋되어도 계속 이어지며, <strong>현재 연차</strong> 내역 및 <strong>이전 연차 先사용(당겨씀) 차감</strong>이 잔여 연차 계산에 반영됩니다.
+              전체 기록은 연차가 리셋되어도 계속 이어지며, <strong>현재 연차</strong> 내역 및 <strong>이전 연차 초과분(끌어쓰기) 차감</strong>이 잔여 연차 계산에 반영됩니다.
             </p>
           </div>
 
@@ -315,8 +315,8 @@
             <strong class="strip-val" id="stripPastUsed">0일 (0건)</strong>
           </div>
           <div class="strip-divider"></div>
-          <div class="strip-item advance-highlight" id="stripAdvanceItem" title="발생 한도를 초과하여 차기 연차를 미리 당겨서 사용한 총 일수입니다.">
-            <span class="strip-label">先사용(당겨씀) 합계</span>
+          <div class="strip-item advance-highlight" id="stripAdvanceItem" title="기본 발생 한도를 초과하여 차기 연차를 미리 당겨서 사용한 총 일수입니다.">
+            <span class="strip-label">끌어쓰기 합계</span>
             <strong class="strip-val" id="stripAdvanceUsed">0일 (0건)</strong>
           </div>
           <div class="strip-divider"></div>
@@ -369,13 +369,14 @@
       <!-- 연차 발생 기준 참고표 (접기/펼치기) -->
       <details class="card reference-card">
         <summary class="reference-summary">
-          <span>📘 근속년수별 법정 발생 연차 기준표 (근로기준법 제60조) 보기</span>
+          <span>📘 근속년수별 연차 발생 기준표 (2년차 15일, 3년차부터 매년 +1일, 최대 25일) 보기</span>
           <span class="summary-arrow">▼</span>
         </summary>
         <div class="reference-body">
           <p class="ref-note">
-            • <strong>1년차 (만 1년 미만)</strong>: 입사일로부터 1개월 개근 시 1일씩 발생 (최대 11일)<br/>
-            • <strong>2년차 이상 (만 1년 이상)</strong>: 기본 15일 부여, 이후 만 3년 이상부터 매 2년마다 1일씩 가산 (최대 25일 한도)
+            • <strong>1년차 (만 1년 미만)</strong>: 입사일로부터 1개월 개근 시 1일씩 발생 (최대 11일, 초과분은 2년차에 영향 없이 리셋)<br/>
+            • <strong>2년차 이상 (만 1년 이상)</strong>: 2년차 기본 15일 부여, 3년차(16일)부터 매년 1일씩 가산 (최대 25일 한도)<br/>
+            • <strong>초과 사용(끌어쓰기)</strong>: 2년차 이후 기본 발생 연차를 초과하여 사용한 일수는 차기 연차 발생 일수에서 자동 차감
           </p>
           <div class="ref-table-scroll">
             <table class="ref-table">

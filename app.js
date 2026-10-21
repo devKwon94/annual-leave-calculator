@@ -214,11 +214,15 @@ function calculateTenure(hireDate, refDate) {
 }
 
 /**
- * 만 근속년수(fullYears, 1 이상)에 따른 법정 연차 일수 계산 (15일 ~ 최대 25일)
+ * 만 근속년수(fullYears, 1 이상)에 따른 연차 일수 계산
+ * - 2년차 (만 1년 근속): 기본 15일
+ * - 3년차부터 매년 1일씩 증가 (만 2년 16일, 만 3년 17일, ...)
+ * - 최대 25일 상한(cap) 적용
  */
 function getStatutoryLeaveForFullYears(fullYears) {
   if (fullYears < 1) return 0;
-  const extraDays = Math.floor((fullYears - 1) / 2);
+  // fullYears = 1 (2년차): 15일, fullYears = 2 (3년차): 16일 ...
+  const extraDays = fullYears - 1;
   return Math.min(25, 15 + extraDays);
 }
 
@@ -593,7 +597,7 @@ function renderAll() {
     els.stripCurrentLabel.textContent = "현재 연차 사용 합계";
     if (els.stripAdvanceUsed) els.stripAdvanceUsed.textContent = "0일 (0건)";
     els.historySubtitleText.innerHTML =
-      "전체 기록은 연차가 리셋되어도 계속 이어지며, <strong>현재 연차</strong> 내역 및 <strong>이전 연차 先사용(당겨씀) 차감</strong>이 잔여 연차 계산에 반영됩니다.";
+      "전체 기록은 연차가 리셋되어도 계속 이어지며, <strong>현재 연차</strong> 내역 및 <strong>이전 연차 초과분(끌어쓰기) 차감</strong>이 잔여 연차 계산에 반영됩니다.";
 
     renderHistoryTable(null);
     renderLawReferenceTable(null);
@@ -698,13 +702,13 @@ function renderAll() {
       pastUsedCount += 1;
     }
 
-    // 배지 라벨 구성 (한문 '先' 표기 적용)
+    // 배지 라벨 구성 (1년차 초과는 '1년차(초과)', 2년차 이후 초과는 'N년차(N+1년차 끌)')
     let badgeLabel = "";
     if (isAdvance) {
-      if (advancePortion >= daysNum) {
-        badgeLabel = `${recCycleOrd}년차 (${targetNextOrd}년차 先사용)`;
+      if (recCycleOrd === 1) {
+        badgeLabel = "1년차(초과)";
       } else {
-        badgeLabel = `${recCycleOrd}년차 (${targetNextOrd}년차 先사용 ${formatNumber(advancePortion)}일)`;
+        badgeLabel = `${recCycleOrd}년차(${targetNextOrd}년차 끌)`;
       }
     } else {
       if (status === "current") {
@@ -746,29 +750,41 @@ function renderAll() {
   });
   totalAdvanceDays = Math.round(totalAdvanceDays * 100) / 100;
 
-  // 이전 연차(예: 1년차)에서 발생한 초과 先사용분 총합 계산 (차기 연차 차감용)
+  // 이전 연차 초과분(끌어쓰기) 순차 차감 계산
+  // 1) 1년차 초과분은 2년차에서 끌어다 쓰지 않고 리셋되어 영향 없음 (0일 차감).
+  // 2) 3년차부터는 2년차 이후 발생한 이전 연차 초과분이 차기 연차 발생 일수에서 순차적으로 차감됨.
   let totalPastAdvanceDeficit = 0;
-  for (let ord = 1; ord < tenure.tenureYearOrdinal; ord++) {
+  let carryoverDeficit = 0;
+  for (let ord = 2; ord <= tenure.tenureYearOrdinal; ord++) {
+    if (ord === tenure.tenureYearOrdinal) {
+      totalPastAdvanceDeficit = carryoverDeficit;
+      break;
+    }
     const cycleDef = getCycleBoundsAndCap(ord, hireDateObj, state.calcBasis, {
       firstYearMode: state.firstYearMode,
       fiscalIncludeFirstYearMonthly: state.fiscalIncludeFirstYearMonthly
     });
-    const cap = cycleDef ? cycleDef.cap : 999;
-    const usedInPastCycle = cycleAccumMap[ord] || 0;
-    if (usedInPastCycle > cap) {
-      totalPastAdvanceDeficit += Math.round((usedInPastCycle - cap) * 100) / 100;
+    const baseCap = cycleDef ? cycleDef.cap : 15;
+    const availableInCycle = Math.max(0, baseCap - carryoverDeficit);
+    const usedInCycle = cycleAccumMap[ord] || 0;
+    if (usedInCycle > availableInCycle) {
+      carryoverDeficit = Math.round((usedInCycle - availableInCycle) * 100) / 100;
+    } else {
+      carryoverDeficit = 0;
     }
   }
   totalPastAdvanceDeficit = Math.round(totalPastAdvanceDeficit * 100) / 100;
 
-  // 이전 연차 초과 先사용분 자동 차감 적용
+  // 이전 연차 초과분 자동 차감 적용
   const advanceDeductedDays = state.autoDeductAdvance ? totalPastAdvanceDeficit : 0;
   const netGenerated = Math.max(
     0,
     Math.round((calcResult.baseLeave - advanceDeductedDays + calcResult.manualAdjust) * 100) / 100
   );
 
-  const remainingDays = Math.round((netGenerated - currentUsedDays) * 100) / 100;
+  const remainingDays = Math.round(
+    (calcResult.baseLeave - advanceDeductedDays + calcResult.manualAdjust - currentUsedDays) * 100
+  ) / 100;
 
   // 4) 직관적인 N년차 용어로 좌측/우측 라벨 동기화
   els.generatedLeaveLabel.textContent = `${shortYearLabel} 발생 연차`;
@@ -777,7 +793,7 @@ function renderAll() {
   let updatedFormulaDesc = calcResult.formulaDesc;
   if (advanceDeductedDays > 0) {
     const pastCycleName = tenure.tenureYearOrdinal > 1 ? `${tenure.tenureYearOrdinal - 1}년차` : "이전 연차";
-    updatedFormulaDesc = `법정 ${formatNumber(calcResult.baseLeave)}일 – ${pastCycleName} 先사용 ${formatNumber(advanceDeductedDays)}일 자동 차감`;
+    updatedFormulaDesc = `기본 ${formatNumber(calcResult.baseLeave)}일 – ${pastCycleName} 초과(끌어쓰기) ${formatNumber(advanceDeductedDays)}일 차감`;
     if (calcResult.manualAdjust !== 0) {
       const sign = calcResult.manualAdjust > 0 ? `+${calcResult.manualAdjust}` : `${calcResult.manualAdjust}`;
       updatedFormulaDesc += ` (수동보정 ${sign}일)`;
@@ -817,7 +833,7 @@ function renderAll() {
   // 5) 우측 연차 사용 기록 탭 및 요약 스트립 업데이트
   els.currentTabLabel.textContent = `${shortYearLabel} (현재)`;
   els.stripCurrentLabel.textContent = `${shortYearLabel} 사용 합계`;
-  els.historySubtitleText.innerHTML = `전체 기록은 연차가 리셋되어도 계속 이어지며, <strong>${shortYearLabel} (현재)</strong> 내역 및 <strong>이전 연차 先사용(당겨씀) 차감</strong>이 잔여 연차 계산에 반영됩니다.`;
+  els.historySubtitleText.innerHTML = `전체 기록은 연차가 리셋되어도 계속 이어지며, <strong>${shortYearLabel} (현재)</strong> 내역 및 <strong>이전 연차 초과분(끌어쓰기) 차감</strong>이 잔여 연차 계산에 반영됩니다.`;
 
   els.countAllBadge.textContent = enrichedRecords.length;
   els.countCurrentBadge.textContent = currentUsedCount;
@@ -892,31 +908,27 @@ function renderHistoryTable(enrichedRecords) {
 function renderLawReferenceTable(currentYearOrdinal) {
   els.lawReferenceTbody.innerHTML = "";
   const rows = [
-    { ord: 1, full: "1년 미만", days: "최대 11일", desc: "1개월 개근 시 1일씩 발생" },
-    { ord: 2, full: "만 1년", days: "15일", desc: "법정 기본 연차 발생" },
-    { ord: 3, full: "만 2년", days: "15일", desc: "기본 15일" },
-    { ord: 4, full: "만 3년", days: "16일", desc: "기본 15일 + 가산 1일" },
-    { ord: 5, full: "만 4년", days: "16일", desc: "기본 15일 + 가산 1일" },
-    { ord: 6, full: "만 5년", days: "17일", desc: "기본 15일 + 가산 2일" },
-    { ord: 7, full: "만 6년", days: "17일", desc: "기본 15일 + 가산 2일" },
-    { ord: 8, full: "만 7년", days: "18일", desc: "기본 15일 + 가산 3일" },
-    { ord: 9, full: "만 8년", days: "18일", desc: "기본 15일 + 가산 3일" },
-    { ord: 10, full: "만 9년", days: "19일", desc: "기본 15일 + 가산 4일" },
-    { ord: 12, full: "만 11년", days: "20일", desc: "기본 15일 + 가산 5일" },
-    { ord: 14, full: "만 13년", days: "21일", desc: "기본 15일 + 가산 6일" },
-    { ord: 16, full: "만 15년", days: "22일", desc: "기본 15일 + 가산 7일" },
-    { ord: 18, full: "만 17년", days: "23일", desc: "기본 15일 + 가산 8일" },
-    { ord: 20, full: "만 19년", days: "24일", desc: "기본 15일 + 가산 9일" },
-    { ord: 22, full: "만 21년 이상", days: "25일", desc: "법정 최대 한도 (25일)" }
+    { ord: 1, full: "1년 미만", days: "최대 11일", desc: "1개월 개근 시 1일씩 발생 (초과분 리셋)" },
+    { ord: 2, full: "만 1년", days: "15일", desc: "기본 15일 부여" },
+    { ord: 3, full: "만 2년", days: "16일", desc: "기본 15일 + 가산 1일 (매년 1일 증가)" },
+    { ord: 4, full: "만 3년", days: "17일", desc: "기본 15일 + 가산 2일" },
+    { ord: 5, full: "만 4년", days: "18일", desc: "기본 15일 + 가산 3일" },
+    { ord: 6, full: "만 5년", days: "19일", desc: "기본 15일 + 가산 4일" },
+    { ord: 7, full: "만 6년", days: "20일", desc: "기본 15일 + 가산 5일" },
+    { ord: 8, full: "만 7년", days: "21일", desc: "기본 15일 + 가산 6일" },
+    { ord: 9, full: "만 8년", days: "22일", desc: "기본 15일 + 가산 7일" },
+    { ord: 10, full: "만 9년", days: "23일", desc: "기본 15일 + 가산 8일" },
+    { ord: 11, full: "만 10년", days: "24일", desc: "기본 15일 + 가산 9일" },
+    { ord: 12, full: "만 11년 이상", days: "25일", desc: "최대 상한 (25일)" }
   ];
 
   rows.forEach((r) => {
     const tr = document.createElement("tr");
-    if (currentYearOrdinal && (currentYearOrdinal === r.ord || (r.ord === 22 && currentYearOrdinal >= 22))) {
+    if (currentYearOrdinal && (currentYearOrdinal === r.ord || (r.ord === 12 && currentYearOrdinal >= 12))) {
       tr.classList.add("active-tenure-row");
     }
     tr.innerHTML = `
-      <td>${r.ord === 22 ? "22년차 이상" : r.ord + "년차"}</td>
+      <td>${r.ord === 12 ? "12년차 이상" : r.ord + "년차"}</td>
       <td>${r.full}</td>
       <td>${r.days}</td>
       <td>${r.desc}</td>
@@ -1016,10 +1028,11 @@ function exportToExcel() {
       }
 
       if (isAdvance) {
-        cycleLabel =
-          advancePortion >= daysNum
-            ? `${recCycleOrd}년차 (${targetNextOrd}년차 先사용)`
-            : `${recCycleOrd}년차 (${targetNextOrd}년차 先사용 ${formatNumber(advancePortion)}일)`;
+        if (recCycleOrd === 1) {
+          cycleLabel = "1년차(초과)";
+        } else {
+          cycleLabel = `${recCycleOrd}년차(${targetNextOrd}년차 끌)`;
+        }
       } else {
         if (isCurrent === "Y") {
           cycleLabel = `${calcResult.tenure.tenureYearOrdinal}년차 (현재)`;
@@ -1060,18 +1073,26 @@ function exportToExcel() {
     { wch: 15 }
   ];
 
-  // 이전 연차 초과 先사용분 총합 계산
+  // 이전 연차 초과분(끌어쓰기) 순차 차감 계산
   let totalPastAdvanceDeficit = 0;
   if (calcResult && hireDateObj) {
-    for (let ord = 1; ord < calcResult.tenure.tenureYearOrdinal; ord++) {
+    let carryoverDeficit = 0;
+    for (let ord = 2; ord <= calcResult.tenure.tenureYearOrdinal; ord++) {
+      if (ord === calcResult.tenure.tenureYearOrdinal) {
+        totalPastAdvanceDeficit = carryoverDeficit;
+        break;
+      }
       const cycleDef = getCycleBoundsAndCap(ord, hireDateObj, state.calcBasis, {
         firstYearMode: state.firstYearMode,
         fiscalIncludeFirstYearMonthly: state.fiscalIncludeFirstYearMonthly
       });
-      const cap = cycleDef ? cycleDef.cap : 999;
-      const usedInPastCycle = cycleAccumMap[ord] || 0;
-      if (usedInPastCycle > cap) {
-        totalPastAdvanceDeficit += Math.round((usedInPastCycle - cap) * 100) / 100;
+      const baseCap = cycleDef ? cycleDef.cap : 15;
+      const availableInCycle = Math.max(0, baseCap - carryoverDeficit);
+      const usedInCycle = cycleAccumMap[ord] || 0;
+      if (usedInCycle > availableInCycle) {
+        carryoverDeficit = Math.round((usedInCycle - availableInCycle) * 100) / 100;
+      } else {
+        carryoverDeficit = 0;
       }
     }
   }
@@ -1081,7 +1102,9 @@ function exportToExcel() {
   const baseLeave = calcResult ? calcResult.baseLeave : 0;
   const manualAdjust = calcResult ? calcResult.manualAdjust : 0;
   const netGenerated = Math.max(0, Math.round((baseLeave - advanceDeductedDays + manualAdjust) * 100) / 100);
-  const remainingLeave = Math.round((netGenerated - currentCycleUsed) * 100) / 100;
+  const remainingLeave = Math.round(
+    (baseLeave - advanceDeductedDays + manualAdjust - currentCycleUsed) * 100
+  ) / 100;
 
   const summaryAoA = [
     ["항목", "값", "설명"],
@@ -1091,8 +1114,8 @@ function exportToExcel() {
     ["산정기준코드", state.calcBasis, "시스템 복원용 코드 (anniversary / fiscal)"],
     ["1년차표시방식", state.firstYearMode, "accrued(매월 1개씩 발생) / max11(11개 한도 표시)"],
     ["회계2년차월차합산", state.fiscalIncludeFirstYearMonthly ? "Y" : "N", "회계년도 2년차에 1년 미만 월차 합산 여부"],
-    ["이전연차_先사용자동차감", state.autoDeductAdvance ? "Y" : "N", "이전 연차 초과 先사용분 차기 연차에서 자동 차감 여부"],
-    ["이전연차_先사용차감일수", advanceDeductedDays, "차기 연차에서 차감된 일수"],
+    ["이전연차_끌어쓰기자동차감", state.autoDeductAdvance ? "Y" : "N", "이전 연차 초과분(끌어쓰기) 차기 연차에서 자동 차감 여부 (1년차는 리셋)"],
+    ["이전연차_끌어쓰기차감일수", advanceDeductedDays, "차기 연차에서 차감된 일수"],
     ["수동보정일수", state.manualAdjust || 0, "발생 연차 수동 가감 일수"],
     ["기준일자(오늘)", formatDate(refDateObj), "근속 및 연차 산정 기준일"],
     ["근속연차", calcResult ? `${calcResult.tenure.tenureYearOrdinal}년차` : "-", calcResult ? `만 ${calcResult.tenure.exactYears}년 ${calcResult.tenure.remMonths}개월` : "-"],
@@ -1103,8 +1126,8 @@ function exportToExcel() {
       calcResult ? `${formatDate(calcResult.cycleStart)} ~ ${formatDate(calcResult.cycleEnd)}` : "-",
       calcResult ? calcResult.cycleLabel : "-"
     ],
-    ["법정발생_기본일수", baseLeave, calcResult ? calcResult.formulaDesc : "-"],
-    ["현재연차_실질발생일수", netGenerated, "법정 발생일수 - 이전연차 先사용 차감일수 + 수동보정"],
+    ["기본발생_일수", baseLeave, calcResult ? calcResult.formulaDesc : "-"],
+    ["현재연차_실질발생일수", netGenerated, "기본 발생일수 - 이전연차 끌어쓰기 차감일수 + 수동보정"],
     ["현재연차_사용일수", Math.round(currentCycleUsed * 100) / 100, "현재 연차 범위 내 사용일수 합계"],
     ["현재연차_잔여일수", remainingLeave, "실질발생일수 - 현재연차 사용일수"]
   ];
@@ -1178,8 +1201,9 @@ function importFromExcel(file) {
         if (kv["회계2년차월차합산"]) {
           state.fiscalIncludeFirstYearMonthly = String(kv["회계2년차월차합산"]).trim() !== "N";
         }
-        if (kv["이전연차_先사용자동차감"]) {
-          state.autoDeductAdvance = String(kv["이전연차_先사용자동차감"]).trim() !== "N";
+        const autoDeductKey = kv["이전연차_끌어쓰기자동차감"] || kv["이전연차_先사용자동차감"];
+        if (autoDeductKey) {
+          state.autoDeductAdvance = String(autoDeductKey).trim() !== "N";
         }
         if (kv["수동보정일수"] !== undefined) {
           state.manualAdjust = parseFloat(kv["수동보정일수"]) || 0;
@@ -1299,8 +1323,8 @@ function initEvents() {
       renderAll();
       showToast(
         state.autoDeductAdvance
-          ? "이전 연차 초과 先사용분 자동 차감이 활성화되었습니다."
-          : "이전 연차 초과 先사용분 자동 차감이 비활성화되었습니다."
+          ? "이전 연차 초과분(끌어쓰기) 자동 차감이 활성화되었습니다."
+          : "이전 연차 초과분(끌어쓰기) 자동 차감이 비활성화되었습니다."
       );
     });
   }

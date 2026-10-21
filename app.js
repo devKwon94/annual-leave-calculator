@@ -702,14 +702,10 @@ function renderAll() {
       pastUsedCount += 1;
     }
 
-    // 배지 라벨 구성 (1년차 초과는 '1년차(초과)', 2년차 이후 초과는 'N년차(N+1년차 끌)')
+    // 배지 라벨 구성 (ONSE 사내 규정: 모든 차수 N년차(N+1년차 끌) 통일)
     let badgeLabel = "";
     if (isAdvance) {
-      if (recCycleOrd === 1) {
-        badgeLabel = "1년차(초과)";
-      } else {
-        badgeLabel = `${recCycleOrd}년차(${targetNextOrd}년차 끌)`;
-      }
+      badgeLabel = `${recCycleOrd}년차(${targetNextOrd}년차 끌)`;
     } else {
       if (status === "current") {
         badgeLabel = `${tenure.tenureYearOrdinal}년차 (현재)`;
@@ -750,12 +746,12 @@ function renderAll() {
   });
   totalAdvanceDays = Math.round(totalAdvanceDays * 100) / 100;
 
-  // 이전 연차 초과분(끌어쓰기) 순차 차감 계산
-  // 1) 1년차 초과분은 2년차에서 끌어다 쓰지 않고 리셋되어 영향 없음 (0일 차감).
-  // 2) 3년차부터는 2년차 이후 발생한 이전 연차 초과분이 차기 연차 발생 일수에서 순차적으로 차감됨.
+  // 이전 연차 초과분(끌어쓰기) 순차 차감 계산 (ONSE 사내 규정 반영)
+  // 1) 1년차에 11일을 초과하여 사용한 일수도 2년차 연차 당겨쓰기로 처리되어 2년차 발생 연차에서 차감됨.
+  // 2) 2년차 이후 발생한 초과분 또한 차기 연차 발생 일수에서 순차적으로 차감됨.
   let totalPastAdvanceDeficit = 0;
   let carryoverDeficit = 0;
-  for (let ord = 2; ord <= tenure.tenureYearOrdinal; ord++) {
+  for (let ord = 1; ord <= tenure.tenureYearOrdinal; ord++) {
     if (ord === tenure.tenureYearOrdinal) {
       totalPastAdvanceDeficit = carryoverDeficit;
       break;
@@ -764,7 +760,7 @@ function renderAll() {
       firstYearMode: state.firstYearMode,
       fiscalIncludeFirstYearMonthly: state.fiscalIncludeFirstYearMonthly
     });
-    const baseCap = cycleDef ? cycleDef.cap : 15;
+    const baseCap = cycleDef ? cycleDef.cap : (ord === 1 ? 11 : 15);
     const availableInCycle = Math.max(0, baseCap - carryoverDeficit);
     const usedInCycle = cycleAccumMap[ord] || 0;
     if (usedInCycle > availableInCycle) {
@@ -908,8 +904,8 @@ function renderHistoryTable(enrichedRecords) {
 function renderLawReferenceTable(currentYearOrdinal) {
   els.lawReferenceTbody.innerHTML = "";
   const rows = [
-    { ord: 1, full: "1년 미만", days: "최대 11일", desc: "1개월 개근 시 1일씩 발생 (초과분 리셋)" },
-    { ord: 2, full: "만 1년", days: "15일", desc: "기본 15일 부여" },
+    { ord: 1, full: "1년 미만", days: "최대 11일", desc: "1개월 개근 시 1일씩 발생 (초과 시 2년차 연차에서 차감)" },
+    { ord: 2, full: "만 1년", days: "15일", desc: "기본 15일 부여 (1년차 초과 당겨쓰기분 차감 반영)" },
     { ord: 3, full: "만 2년", days: "16일", desc: "기본 15일 + 가산 1일 (매년 1일 증가)" },
     { ord: 4, full: "만 3년", days: "17일", desc: "기본 15일 + 가산 2일" },
     { ord: 5, full: "만 4년", days: "18일", desc: "기본 15일 + 가산 3일" },
@@ -1028,11 +1024,7 @@ function exportToExcel() {
       }
 
       if (isAdvance) {
-        if (recCycleOrd === 1) {
-          cycleLabel = "1년차(초과)";
-        } else {
-          cycleLabel = `${recCycleOrd}년차(${targetNextOrd}년차 끌)`;
-        }
+        cycleLabel = `${recCycleOrd}년차(${targetNextOrd}년차 끌)`;
       } else {
         if (isCurrent === "Y") {
           cycleLabel = `${calcResult.tenure.tenureYearOrdinal}년차 (현재)`;
@@ -1073,11 +1065,11 @@ function exportToExcel() {
     { wch: 15 }
   ];
 
-  // 이전 연차 초과분(끌어쓰기) 순차 차감 계산
+  // 이전 연차 초과분(끌어쓰기) 순차 차감 계산 (ONSE 사내 규정 반영: 1년차 포함)
   let totalPastAdvanceDeficit = 0;
   if (calcResult && hireDateObj) {
     let carryoverDeficit = 0;
-    for (let ord = 2; ord <= calcResult.tenure.tenureYearOrdinal; ord++) {
+    for (let ord = 1; ord <= calcResult.tenure.tenureYearOrdinal; ord++) {
       if (ord === calcResult.tenure.tenureYearOrdinal) {
         totalPastAdvanceDeficit = carryoverDeficit;
         break;
@@ -1086,7 +1078,7 @@ function exportToExcel() {
         firstYearMode: state.firstYearMode,
         fiscalIncludeFirstYearMonthly: state.fiscalIncludeFirstYearMonthly
       });
-      const baseCap = cycleDef ? cycleDef.cap : 15;
+      const baseCap = cycleDef ? cycleDef.cap : (ord === 1 ? 11 : 15);
       const availableInCycle = Math.max(0, baseCap - carryoverDeficit);
       const usedInCycle = cycleAccumMap[ord] || 0;
       if (usedInCycle > availableInCycle) {

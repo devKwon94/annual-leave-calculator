@@ -8,7 +8,7 @@
   <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
   <!-- SheetJS (xlsx) for Local PC Excel Save & Load -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <link rel="stylesheet" href="styles.css?v=20261021_2" />
+  <link rel="stylesheet" href="styles.css?v=20261021_3" />
 </head>
 <body>
   <!-- 상단 네비게이션 및 엑셀 DB 관리 헤더 -->
@@ -134,9 +134,9 @@
           </div>
 
           <div class="adv-row">
-            <label class="adv-label" title="2년차 이후 기본 발생 일수를 초과하여 사용한 일수(끌어쓰기)를 차기 연차 발생 일수에서 자동으로 차감합니다. (1년차 초과분은 리셋되어 2년차에 영향 없음)">
+            <label class="adv-label" title="1년차(11일 초과) 및 2년차 이후 기본 발생 일수를 초과하여 사용한 일수(끌어쓰기)를 차기 연차 발생 일수에서 자동으로 차감합니다. (온세 사내 규정)">
               <input type="checkbox" id="autoDeductAdvanceChk" checked />
-              <span>이전 연차 초과분(끌어쓰기) 차기 연차에서 자동 차감</span>
+              <span>이전 연차 초과분(끌어쓰기) 차기 연차에서 자동 차감 (1년차 포함 ONSE 규정)</span>
             </label>
           </div>
 
@@ -369,15 +369,29 @@
       <!-- 연차 발생 기준 참고표 (접기/펼치기) -->
       <details class="card reference-card">
         <summary class="reference-summary">
-          <span>📘 근속년수별 연차 발생 기준표 (2년차 15일, 3년차부터 매년 +1일, 최대 25일) 보기</span>
+          <span>📘 근속년수별 연차 발생 기준표 및 사내 규정 안내 (ONSE 기준) 보기</span>
           <span class="summary-arrow">▼</span>
         </summary>
         <div class="reference-body">
-          <p class="ref-note">
-            • <strong>1년차 (만 1년 미만)</strong>: 입사일로부터 1개월 개근 시 1일씩 발생 (최대 11일, 초과분은 2년차에 영향 없이 리셋)<br/>
-            • <strong>2년차 이상 (만 1년 이상)</strong>: 2년차 기본 15일 부여, 3년차(16일)부터 매년 1일씩 가산 (최대 25일 한도)<br/>
-            • <strong>초과 사용(끌어쓰기)</strong>: 2년차 이후 기본 발생 연차를 초과하여 사용한 일수는 차기 연차 발생 일수에서 자동 차감
-          </p>
+          <div class="compare-info-box">
+            <div class="compare-card compare-law">
+              <div class="compare-title">⚖️ 법정 기준 (근로기준법 제60조)</div>
+              <ul class="compare-list">
+                <li><strong>1년 미만 월차</strong>: 1개월 개근 시 1일씩 최대 11일 발생.</li>
+                <li><strong>만 1년 이상</strong>: 만 1년 15일, 만 2년 15일, 만 3년(16일)부터 2년마다 1일씩 가산 (최대 25일).</li>
+                <li><strong>차기 연차 상계</strong>: 법률상 1년 미만 초과분을 차기 연차에서 강제 차감하는 규정은 없음.</li>
+              </ul>
+            </div>
+            <div class="compare-card compare-onse">
+              <div class="compare-title">🏢 온세(ONSE) 사내 연차 규정</div>
+              <ul class="compare-list">
+                <li><strong>1년차 당겨쓰기 2년차 차감</strong>: 1년차에 기본 한도(11일)를 초과하여 사용할 경우 '2년차 당겨쓰기'로 처리되어 <strong>2년차 연차(15일)에서 자동 차감</strong>됩니다.</li>
+                <li><strong>매년 1일 가산</strong>: 2년차 15일, 3년차 16일, 4년차 17일 등 <strong>매년 1일씩 증가</strong> (최대 25일 한도).</li>
+                <li><strong>초과분(끌어쓰기) 순차 차감</strong>: 각 연차에서 가용 한도를 초과해 사용한 일수는 차기 연차 발생 일수에서 순차적으로 자동 차감됩니다.</li>
+              </ul>
+            </div>
+          </div>
+
           <div class="ref-table-scroll">
             <table class="ref-table">
               <thead>
@@ -401,6 +415,6 @@
   <!-- 토스트 알림 -->
   <div id="toastContainer" class="toast-container"></div>
 
-  <script src="app.js?v=20261021_2"></script>
+  <script src="app.js?v=20261021_3"></script>
 </body>
 </html>

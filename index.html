@@ -8,7 +8,7 @@
   <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
   <!-- SheetJS (xlsx) for Local PC Excel Save & Load -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <link rel="stylesheet" href="styles.css?v=20261021_3" />
+  <link rel="stylesheet" href="styles.css?v=20261022_1" />
 </head>
 <body>
   <!-- 상단 네비게이션 및 엑셀 DB 관리 헤더 -->
@@ -49,7 +49,7 @@
         <!-- 우측 상단 엑셀 DB 저장하기 바로 아래: 로컬 PC 저장 경로 안내 표시줄 -->
         <div class="excel-path-bar" id="excelPathBar">
           <span class="path-label">📍 저장되어 있는 경로:</span>
-          <code class="path-value" id="savedPathText">C:\Users\[본인PC계정]\Downloads\연차 사용 이력_(저장 시 자동생성).xlsx</code>
+          <code class="path-value" id="savedPathText">C:\Users\[본인PC계정]\Downloads\연차 사용이력 기록용.xlsx</code>
           <span class="path-sub" id="savedPathStatus">(브라우저 자동저장 활성화됨)</span>
         </div>
       </div>
@@ -232,47 +232,39 @@
         </div>
       </div>
 
-      <!-- 3. 연차 사용 등록 카드 -->
+      <!-- 3. 연차 사용 등록 카드 (다중 행 동시 입력) -->
       <div class="card">
         <div class="card-header">
-          <h2 class="card-title">✍️ 연차 사용 기록하기</h2>
-          <span class="card-hint">입력 시 우측 이력에 즉시 추가됩니다</span>
+          <div>
+            <h2 class="card-title">✍️ 연차 사용 기록하기</h2>
+            <span class="card-hint">행을 추가하여 여러 연차를 한 번에 저장할 수 있습니다</span>
+          </div>
+          <button type="button" id="addInputRowTopBtn" class="btn btn-outline btn-sm">
+            ➕ 행 추가
+          </button>
         </div>
 
         <form id="leaveRecordForm" class="record-form">
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="leaveUseDate" class="form-label">사용일자 <span class="label-req">*</span></label>
-              <input type="date" id="leaveUseDate" class="form-control" required />
-            </div>
-
-            <div class="form-group">
-              <label for="leaveTypeSelect" class="form-label">휴가 종류 (차감일수)</label>
-              <select id="leaveTypeSelect" class="form-control">
-                <option value="연차|1">연차 (1.0일)</option>
-                <option value="오전반차|0.5">오전반차 (0.5일)</option>
-                <option value="오후반차|0.5">오후반차 (0.5일)</option>
-                <option value="반반차|0.25">반반차 (0.25일)</option>
-                <option value="연속휴가(직접입력)|custom">직접 일수 입력 (연속휴가 등)</option>
-              </select>
-            </div>
+          <!-- 컴팩트 단일 행 헤더 -->
+          <div class="entry-table-header">
+            <span class="col-head col-date">사용일자 <span class="label-req">*</span></span>
+            <span class="col-head col-type">휴가종류</span>
+            <span class="col-head col-days">일수 <span class="label-req">*</span></span>
+            <span class="col-head col-note">비고 (사유/메모)</span>
+            <span class="col-head col-del">삭제</span>
           </div>
 
-          <div class="form-row-2 mt-10">
-            <div class="form-group">
-              <label for="leaveDaysInput" class="form-label">사용 일수 <span class="label-req">*</span></label>
-              <input type="number" id="leaveDaysInput" class="form-control" step="0.25" min="0.25" max="365" value="1" required />
-            </div>
-
-            <div class="form-group">
-              <label for="leaveNoteInput" class="form-label">비고 (사유/메모)</label>
-              <input type="text" id="leaveNoteInput" class="form-control" placeholder="예: 개인사정, 병원 진료, 여름휴가" />
-            </div>
+          <!-- 동적 입력 행 컨테이너 -->
+          <div id="entryRowsContainer" class="entry-rows-container">
+            <!-- JS에서 renderEntryRows()로 동적 렌더링 -->
           </div>
 
-          <div class="form-submit-row">
-            <button type="submit" class="btn btn-accent btn-full">
-              ➕ 연차 사용 내역 추가
+          <div class="entry-actions-row">
+            <button type="button" id="addInputRowBtn" class="btn btn-outline btn-sm">
+              ➕ 행 추가
+            </button>
+            <button type="submit" class="btn btn-accent btn-save-records">
+              💾 연차사용내역 저장
             </button>
           </div>
         </form>
@@ -349,7 +341,7 @@
           <div id="emptyHistoryState" class="empty-state">
             <div class="empty-icon">📝</div>
             <p class="empty-title">등록된 연차 사용 기록이 없습니다.</p>
-            <p class="empty-desc">좌측 [연차 사용 기록하기]에서 사용일자, 일수, 비고를 입력해 추가하거나,<br/>기존에 저장한 <code>연차 사용 이력_(날짜_시간).xlsx</code> 파일을 불러오세요.</p>
+            <p class="empty-desc">좌측 [연차 사용 기록하기]에서 사용일자, 일수, 비고를 입력해 추가하거나,<br/>기존에 저장한 <code>연차 사용이력 기록용.xlsx</code> 파일을 불러오세요.</p>
           </div>
         </div>
 
@@ -415,6 +407,6 @@
   <!-- 토스트 알림 -->
   <div id="toastContainer" class="toast-container"></div>
 
-  <script src="app.js?v=20261021_3"></script>
+  <script src="app.js?v=20261022_1"></script>
 </body>
 </html>

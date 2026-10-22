@@ -77,10 +77,9 @@ const els = {
   usageProgressBar: document.getElementById("usageProgressBar"),
 
   leaveRecordForm: document.getElementById("leaveRecordForm"),
-  leaveUseDate: document.getElementById("leaveUseDate"),
-  leaveTypeSelect: document.getElementById("leaveTypeSelect"),
-  leaveDaysInput: document.getElementById("leaveDaysInput"),
-  leaveNoteInput: document.getElementById("leaveNoteInput"),
+  entryRowsContainer: document.getElementById("entryRowsContainer"),
+  addInputRowTopBtn: document.getElementById("addInputRowTopBtn"),
+  addInputRowBtn: document.getElementById("addInputRowBtn"),
 
   historySubtitleText: document.getElementById("historySubtitleText"),
   filterTabs: document.querySelectorAll(".filter-tab"),
@@ -524,7 +523,7 @@ function renderSavedPathBar() {
       ? `(${state.lastExcelActionTime} 기준)`
       : "(내 PC 다운로드 폴더 보관)";
   } else {
-    els.savedPathText.textContent = `C:\\Users\\[본인PC계정]\\Downloads\\연차 사용 이력_(저장 시 자동생성).xlsx`;
+    els.savedPathText.textContent = `C:\\Users\\[본인PC계정]\\Downloads\\연차 사용이력 기록용.xlsx`;
     els.savedPathStatus.textContent = "(현재 브라우저 내부 자동저장 중)";
   }
 }
@@ -952,17 +951,11 @@ function showToast(msg) {
 }
 
 // ============================================================================
-// 4. 로컬 PC 엑셀 저장 ("연차 사용 이력_(업데이트 날짜, 시간).xlsx") 및 불러오기
+// 4. 로컬 PC 엑셀 저장 ("연차 사용이력 기록용.xlsx") 및 불러오기
 // ============================================================================
 
 function buildExcelFileName() {
-  const now = new Date();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const dd = String(now.getDate()).padStart(2, "0");
-  const hh = String(now.getHours()).padStart(2, "0");
-  const min = String(now.getMinutes()).padStart(2, "0");
-  return `연차 사용 이력_${yyyy}-${mm}-${dd}_${hh}시${min}분.xlsx`;
+  return "연차 사용이력 기록용.xlsx";
 }
 
 function exportToExcel() {
@@ -1250,7 +1243,91 @@ function importFromExcel(file) {
 }
 
 // ============================================================================
-// 5. 이벤트 리스너 바인딩 및 초기화
+// 5. 다중 행(Batch) 연차 입력 관리
+// ============================================================================
+
+function createEntryRowElement(initialData = {}) {
+  const rowDiv = document.createElement("div");
+  rowDiv.className = "entry-row-item";
+
+  const defaultDate = initialData.date || getTodayStr();
+  const defaultType = initialData.type || "연차|1";
+  const defaultDays = initialData.days !== undefined ? initialData.days : 1;
+  const defaultNote = initialData.note || "";
+
+  rowDiv.innerHTML = `
+    <input type="date" class="form-control-compact input-row-date" value="${defaultDate}" required />
+    <select class="form-control-compact input-row-type">
+      <option value="연차|1" ${defaultType === "연차|1" ? "selected" : ""}>연차 (1.0일)</option>
+      <option value="오전반차|0.5" ${defaultType === "오전반차|0.5" ? "selected" : ""}>오전반차 (0.5일)</option>
+      <option value="오후반차|0.5" ${defaultType === "오후반차|0.5" ? "selected" : ""}>오후반차 (0.5일)</option>
+      <option value="반반차|0.25" ${defaultType === "반반차|0.25" ? "selected" : ""}>반반차 (0.25일)</option>
+      <option value="직접입력|custom" ${defaultType.includes("custom") ? "selected" : ""}>직접 입력</option>
+    </select>
+    <input type="number" class="form-control-compact input-days input-row-days" step="0.25" min="0.25" max="365" value="${defaultDays}" required />
+    <input type="text" class="form-control-compact input-row-note" placeholder="사유/메모" value="${defaultNote}" />
+    <button type="button" class="btn-remove-row" title="행 삭제">✕</button>
+  `;
+
+  const typeSelect = rowDiv.querySelector(".input-row-type");
+  const daysInput = rowDiv.querySelector(".input-row-days");
+  const removeBtn = rowDiv.querySelector(".btn-remove-row");
+
+  typeSelect.addEventListener("change", (e) => {
+    const [, defaultDays] = e.target.value.split("|");
+    if (defaultDays !== "custom") {
+      daysInput.value = parseFloat(defaultDays);
+    } else {
+      daysInput.focus();
+      daysInput.select();
+    }
+  });
+
+  removeBtn.addEventListener("click", () => {
+    if (!els.entryRowsContainer) return;
+    const allRows = els.entryRowsContainer.querySelectorAll(".entry-row-item");
+    if (allRows.length <= 1) {
+      // 1개 행만 남아있을 때는 행을 삭제하지 않고 기본값으로 리셋
+      const dateInp = rowDiv.querySelector(".input-row-date");
+      const noteInp = rowDiv.querySelector(".input-row-note");
+      dateInp.value = getTodayStr();
+      typeSelect.value = "연차|1";
+      daysInput.value = 1;
+      noteInp.value = "";
+    } else {
+      rowDiv.remove();
+    }
+  });
+
+  return rowDiv;
+}
+
+function addEntryRow(initialData = {}) {
+  if (!els.entryRowsContainer) return null;
+  // 이전 행의 사용일자가 있으면 디폴트 날짜로 계승하여 연속 입력 지원
+  if (!initialData.date) {
+    const rows = els.entryRowsContainer.querySelectorAll(".entry-row-item");
+    if (rows.length > 0) {
+      const lastRow = rows[rows.length - 1];
+      const lastDate = lastRow.querySelector(".input-row-date").value;
+      if (lastDate) initialData.date = lastDate;
+    }
+  }
+
+  const rowEl = createEntryRowElement(initialData);
+  els.entryRowsContainer.appendChild(rowEl);
+  els.entryRowsContainer.scrollTop = els.entryRowsContainer.scrollHeight;
+  return rowEl;
+}
+
+function initEntryRows() {
+  if (!els.entryRowsContainer) return;
+  els.entryRowsContainer.innerHTML = "";
+  addEntryRow({ date: getTodayStr(), type: "연차|1", days: 1, note: "" });
+}
+
+// ============================================================================
+// 6. 이벤트 리스너 바인딩 및 초기화
 // ============================================================================
 
 function initEvents() {
@@ -1321,46 +1398,66 @@ function initEvents() {
     });
   }
 
-  els.leaveTypeSelect.addEventListener("change", (e) => {
-    const [, defaultDays] = e.target.value.split("|");
-    if (defaultDays !== "custom") {
-      els.leaveDaysInput.value = parseFloat(defaultDays);
-    } else {
-      els.leaveDaysInput.focus();
-    }
-  });
+  if (els.addInputRowTopBtn) {
+    els.addInputRowTopBtn.addEventListener("click", () => addEntryRow());
+  }
+
+  if (els.addInputRowBtn) {
+    els.addInputRowBtn.addEventListener("click", () => addEntryRow());
+  }
 
   els.leaveRecordForm.addEventListener("submit", (e) => {
     e.preventDefault();
-    const useDate = els.leaveUseDate.value;
-    if (!useDate) {
-      alert("사용일자를 선택해 주세요.");
+    if (!els.entryRowsContainer) return;
+
+    const rowEls = els.entryRowsContainer.querySelectorAll(".entry-row-item");
+    const validRecords = [];
+
+    for (let i = 0; i < rowEls.length; i++) {
+      const row = rowEls[i];
+      const dateVal = row.querySelector(".input-row-date").value.trim();
+      const typeVal = row.querySelector(".input-row-type").value;
+      const daysVal = parseFloat(row.querySelector(".input-row-days").value);
+      const noteVal = row.querySelector(".input-row-note").value.trim();
+
+      // 전체가 빈 행이면 스킵
+      if (!dateVal && !noteVal && isNaN(daysVal)) {
+        continue;
+      }
+
+      if (!dateVal) {
+        alert(`${i + 1}번째 행의 사용일자를 선택해 주세요.`);
+        row.querySelector(".input-row-date").focus();
+        return;
+      }
+
+      if (isNaN(daysVal) || daysVal <= 0) {
+        alert(`${i + 1}번째 행의 올바른 사용 일수를 입력해 주세요.`);
+        row.querySelector(".input-row-days").focus();
+        return;
+      }
+
+      const [typeName] = typeVal.split("|");
+      validRecords.push({
+        id: `rec_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 7)}`,
+        date: dateVal,
+        type: typeName,
+        days: daysVal,
+        note: noteVal
+      });
+    }
+
+    if (validRecords.length === 0) {
+      alert("저장할 연차 사용 내역을 입력해 주세요.");
       return;
     }
 
-    const daysVal = parseFloat(els.leaveDaysInput.value);
-    if (isNaN(daysVal) || daysVal <= 0) {
-      alert("올바른 사용 일수를 입력해 주세요.");
-      return;
-    }
-
-    const [typeName] = els.leaveTypeSelect.value.split("|");
-    const noteText = els.leaveNoteInput.value.trim();
-
-    const newRecord = {
-      id: `rec_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      date: useDate,
-      type: typeName,
-      days: daysVal,
-      note: noteText
-    };
-
-    state.records.push(newRecord);
+    state.records.push(...validRecords);
     saveToLocalStorage();
     renderAll();
 
-    els.leaveNoteInput.value = "";
-    showToast(`✅ ${useDate} (${daysVal}일) 연차 사용 내역이 추가되었습니다.`);
+    initEntryRows();
+    showToast(`💾 총 ${validRecords.length}건의 연차 사용 내역이 저장되었습니다.`);
 
     if (state.autoDownloadExcel) {
       exportToExcel();
@@ -1428,13 +1525,13 @@ function initEvents() {
 function initApp() {
   const todayStr = getTodayStr();
   els.referenceDateInput.value = todayStr;
-  els.leaveUseDate.value = todayStr;
 
   const hasSaved = loadFromLocalStorage();
   if (!hasSaved) {
     state.calcBasis = "anniversary";
   }
 
+  initEntryRows();
   initEvents();
   renderAll();
 }
